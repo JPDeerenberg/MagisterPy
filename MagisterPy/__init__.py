@@ -1,5 +1,14 @@
-from .magister_session import MagisterSession
-from .request_manager import LoginRequestsSender, AuthorizedRequestSender
-from .jsparser import *
-from .magister_errors import *
-from .response_items import *
+from .client import MagisterClient
+from .models import (
+    Person, AccountInfo, Grade, Appointment, 
+    Message, MessageFolder, Assignment, StudyGuide
+)
+
+__version__ = "2.0.0"
+__all__ = [
+    "MagisterClient",
+    "Person", "AccountInfo", 
+    "Grade", "Appointment", 
+    "Message", "MessageFolder", 
+    "Assignment", "StudyGuide"
+]
