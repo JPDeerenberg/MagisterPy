@@ -8,21 +8,17 @@ Please note: Using unauthorized APIs to access Magister might be against Magiste
 By using this library, you assume all responsibility and accept any risks associated with breaching these terms.
 For more details, please refer to Magister's Terms of Service. (https://magister.nl/over-ons/juridische-zaken/)
 
+But making your own server or program is always worth it.
+
 ## Installation
 
 ```
-pip install git+https://github.com/H3LL0U/MagisterPy.git
-```
-
-or
-
-```
-pip install MagisterPy
+pip install does not work yet
 ```
 
 ## Contributing
 
-Feel free to create an issue if something doesn't work. It's only been tested on at least 2 schools so far so it is to be expected. If you want to help add a feature it would be great as well! :D
+Feel free to create an issue if something doesn't work. It's only been tested on 1 school so far, so it is to be expected. If you want to help add a feature it would be great as well! :D
 Also please create an issue if you have any questions!
 
 ## Basic usage
@@ -57,5 +53,18 @@ async def main():
 
 asyncio.run(main())
 ```
+
+This Python script uses a headless browser to function. It uses Playwright with chromium, it is still very fast.
+
+## To-Do
+
+- Send messages integration
+- Leermiddelen links
+- See personal info
+- Edit schedule
+- Better compatabilty
+- Pip support
+- Automated Discord webhook lesson changes script
+- Encryption or better safety
 
 With MagisterPy, you can access and manage your Magister account directly from Python, automating repetitive tasks and integrating your school data into your projects.
