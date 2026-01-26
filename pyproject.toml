@@ -16,7 +16,8 @@ dependencies = [
     "httpx",
     "playwright",
     "beautifulsoup4",
-    "python-dotenv"
+    "python-dotenv",
+    "pydantic"
 ]
 
 [project.urls]
