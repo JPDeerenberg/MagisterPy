@@ -36,6 +36,7 @@ class Appointment(BaseModel):
     location: Optional[str] = Field(default=None, alias="Lokatie")
     content: Optional[str] = Field(default=None, alias="Inhoud")
     completed: bool = Field(alias="Afgerond")
+    info_type: int = Field(default=0, alias="InfoType")
 
     @property
     def has_homework(self) -> bool:

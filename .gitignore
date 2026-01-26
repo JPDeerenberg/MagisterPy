@@ -220,3 +220,6 @@ __marimo__/
 
 # MagisterPy sensitive info --- IGNORE ---
 access_token.txt
+
+login_failure.png 
+login_failure*

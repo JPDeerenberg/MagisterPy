@@ -7,6 +7,9 @@ from .models import (
     StudyGuide, StudyGuideItem, Assignment
 )
 
+# Use a real browser User-Agent so Magister thinks we are Chrome
+REALISTIC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 class MagisterClient:
     def __init__(self, base_url: str, token: str):
         self.base_url = base_url.rstrip("/")
@@ -17,11 +20,13 @@ class MagisterClient:
             base_url=self.base_url, 
             headers={
                 "Authorization": self.token,
-                "User-Agent": "MagisterPy/2.0",
-                "Accept": "application/json"
+                "User-Agent": REALISTIC_USER_AGENT, # Spoofed
+                "Accept": "application/json",
+                "Referer": "https://magister.net/"  # Extra credibility
             }
         )
 
+    # ... (The rest of the file remains exactly the same)
     async def __aenter__(self):
         return self
 
@@ -62,18 +67,12 @@ class MagisterClient:
         payload = {
             "onderwerp": subject,
             "inhoud": body,
-            "ontvangers": [
-                {"id": recipient_id, "type": "persoon"} 
-            ],
+            "ontvangers": [{"id": recipient_id, "type": "persoon"}],
             "prioriteit": 0,
             "bevestigingGevraagd": False
         }
-        
         resp = await self.client.post("/api/berichten", json=payload)
-        
-        if resp.status_code in [200, 201, 204]:
-            return True
-        return False
+        return resp.status_code in [200, 201, 204]
 
     async def get_study_guides(self) -> List[StudyGuide]:
         pid = await self._get_me()
@@ -84,27 +83,16 @@ class MagisterClient:
     async def get_study_guide_items(self, guide_id: int) -> List[StudyGuideItem]:
         pid = await self._get_me()
         resp = await self.client.get(f"/api/leerlingen/{pid}/studiewijzers/{guide_id}/onderdelen")
-        
-        if resp.status_code in [204, 404]:
-            return []
-            
+        if resp.status_code in [204, 404]: return []
         resp.raise_for_status()
-        
-        try:
-            data = resp.json()
-        except:
-            return []
-
+        try: data = resp.json()
+        except: return []
         return [StudyGuideItem(**i) for i in data.get("Items", [])]
 
     async def get_assignments(self, open_only: bool = False) -> List[Assignment]:
         pid = await self._get_me()
         resp = await self.client.get(f"/api/personen/{pid}/opdrachten", params={"top": 50, "skip": 0})
         resp.raise_for_status()
-        
         all_assignments = [Assignment(**i) for i in resp.json()["Items"]]
-        
-        if open_only:
-            return [a for a in all_assignments if a.is_open]
-            
+        if open_only: return [a for a in all_assignments if a.is_open]
         return all_assignments

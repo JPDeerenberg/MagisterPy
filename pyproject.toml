@@ -10,12 +10,13 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "you@example.com"}
+    {name = "Your Name", email = "you@needtofillinlater.com"}
 ]
 dependencies = [
     "httpx",
     "playwright",
-    "beautifulsoup4"
+    "beautifulsoup4",
+    "python-dotenv"
 ]
 
 [project.urls]
