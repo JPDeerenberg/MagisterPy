@@ -1,73 +1,61 @@
-name: Publish Python distributions to PyPI and GitHub Release
+name: Publish Release
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  python-build-n-publish:
-    name: Build and publish Python distribution and upload to GitHub release
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the code
         uses: actions/checkout@v3
 
-      - name: Set up Python 3.9
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.9
+          python-version: "3.9"
 
-      - name: Install dependencies
+      - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 build
+          pip install build
 
-      - name: Lint with flake8
-        run: |
-          # Stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Build package
+        run: python -m build
 
-      - name: Build distribution (source and wheel)
-        run: |
-          python -m build  # This will create both source distribution and wheel
-
-      - name: Publish distribution to PyPI
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          password: ${{ secrets.pypi_password }}
-          repository_url: https://upload.pypi.org/legacy/
-
-      - name: Get the version from setup.py
+      - name: Extract Version from pyproject.toml
         id: get_version
-        run: echo "version=$(python setup.py --version)" >> $GITHUB_ENV
-
-      - name: Create a Git tag
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          git tag -a v${{ env.version }} -m "Release v${{ env.version }}"
-          git push origin v${{ env.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Grep the version line from pyproject.toml and clean it up
+          VERSION=$(grep -m1 'version =' pyproject.toml | cut -d '"' -f2)
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Upload distribution to GitHub Release
+      - name: Create Git Tag
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git tag -a v${{ steps.get_version.outputs.version }} -m "Release v${{ steps.get_version.outputs.version }}"
+          git push origin v${{ steps.get_version.outputs.version }}
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
           files: |
-            dist/*
-            MagisterPy/* 
+            dist/*.whl
+            dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create a GitHub release
-        uses: actions/create-release@v1
-        with:
-          tag_name: v${{ env.version }}
-          release_name: Release v${{ env.version }}
-          body: |
-            ## What's New
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Uncomment this if/when you want to publish to PyPI
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     password: ${{ secrets.PYPI_PASSWORD }}

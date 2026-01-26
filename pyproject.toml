@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "magisterpy"
+version = "0.1.0"
+description = "A Python wrapper for the Magister API because their frontend is too slow."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+dependencies = [
+    "httpx",
+    "playwright",
+    "beautifulsoup4"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/YOUR_USERNAME/MagisterPy"
+"Bug Tracker" = "https://github.com/YOUR_USERNAME/MagisterPy/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]  # Scans for the package (MagisterPy folder) automatically

@@ -1,7 +1,7 @@
 import httpx
 from datetime import date
 from typing import List
-from models import (
+from .models import (
     Appointment, Grade, AccountInfo, 
     MessageFolder, Message, 
     StudyGuide, StudyGuideItem, Assignment
@@ -48,7 +48,6 @@ class MagisterClient:
         resp.raise_for_status()
         return [Appointment(**i) for i in resp.json().get("Items", [])]
 
-    # --- MAIL ---
     async def get_folders(self) -> List[MessageFolder]:
         resp = await self.client.get("/api/berichten/mappen")
         resp.raise_for_status()

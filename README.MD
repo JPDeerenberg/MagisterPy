@@ -8,12 +8,22 @@ Please note: Using unauthorized APIs to access Magister might be against Magiste
 By using this library, you assume all responsibility and accept any risks associated with breaching these terms.
 For more details, please refer to Magister's Terms of Service. (https://magister.nl/over-ons/juridische-zaken/)
 
-But making your own server or program is always worth it.
+## 📦 Installation
 
-## Installation
+You can install this directly from GitHub using `pip`. You don't need to clone it manually like a caveman.
+
+bash
+
+**Install the library**
 
 ```
-pip install does not work yet
+pip install git+[https://github.com/JPDeerenberg/MagisterPy.git](https://github.com/JPDeerenberg/MagisterPy.git)
+```
+
+**You also need the browsers for Playwright (used for login)**
+
+```
+playwright install chromium
 ```
 
 ## Contributing

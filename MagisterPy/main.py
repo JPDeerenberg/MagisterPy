@@ -1,20 +1,47 @@
 import asyncio
+import os
 from client import MagisterClient
 from auth import MagisterAuth
 
 SCHOOL = ""
 USERNAME = ""
+PASSWORD = ""
+TOKEN_FILE = "access_token.txt"
 
 async def main():
     print(f"--- Login to {SCHOOL} ---")
     
-    password = input("Enter Password: ") 
+    token = None
+
+    if os.path.exists(TOKEN_FILE):
+        print(f"📂 Found {TOKEN_FILE}, attempting to reuse session...")
+        with open(TOKEN_FILE, "r") as f:
+            token = f.read().strip()
     
-    try:
-        auth = MagisterAuth(SCHOOL, USERNAME, password)
-        token = await auth.get_token()
-    except Exception as e:
-        print(f"🛑 Login Failed: {e}")
+    elif PASSWORD:
+        print("🔑 Using hardcoded password (I hope nobody is looking over your shoulder)...")
+        try:
+            auth = MagisterAuth(SCHOOL, USERNAME, PASSWORD)
+            token = await auth.get_token()
+            with open(TOKEN_FILE, "w") as f:
+                f.write(token)
+        except Exception as e:
+            print(f"🛑 Login Failed: {e}")
+            return
+            
+    else:
+        pw_input = input("Enter Password: ") 
+        try:
+            auth = MagisterAuth(SCHOOL, USERNAME, pw_input)
+            token = await auth.get_token()
+            with open(TOKEN_FILE, "w") as f:
+                f.write(token)
+        except Exception as e:
+            print(f"🛑 Login Failed: {e}")
+            return
+
+    if not token:
+        print("💀 No token, no service.")
         return
 
     async with MagisterClient(SCHOOL, token) as m:
