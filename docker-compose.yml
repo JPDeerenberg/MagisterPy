@@ -1,0 +1,20 @@
+services:
+  magister-bot:
+    build: .
+    container_name: magister_surveillance
+    restart: unless-stopped
+
+    environment:
+      - SCHOOL=https://YOURSCHOOL.magister.net
+      - USERNAME=YOUR_USERNAME
+      - PASSWORD=YOUR_PASSWORD
+      - DISCORD_WEBHOOK=YOUR_WEBHOOK_URL
+      - TOKEN_FILE=/app/data/access_token.txt
+
+    volumes:
+      - ./magister_data:/app/data
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
