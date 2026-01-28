@@ -11,6 +11,6 @@ COPY . /app
 
 RUN pip install --no-cache-dir .
 
-RUN playwright install chromium-headless-shell
+RUN playwright install --with-deps chromium-headless-shell
 
 CMD ["python", "server.py"]

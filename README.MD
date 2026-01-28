@@ -1,6 +1,6 @@
-# ![Image](magisterpy.png)
+# ![MagisterPy](https://github.com/user-attachments/assets/47bd3819-8d4e-4e3e-82e6-b63ee9b66c3b)
 
-# MagisterPy
+# MagisterPy 🕵️‍♂️
 
 **The unofficial, stealthy, and slightly aggressive Magister wrapper.**
 
@@ -10,18 +10,18 @@ Let's be real: checking Magister manually is for people who don't know how to co
 
 - **Stealth Mode:** Uses a heavily modified headless Chromium browser to bypass Magister's "Are you a robot?" checks. We lie to the server and tell it we are a human on a Windows laptop.
 - **Discord Notifications:** Get instant alerts for:
-  - 📊 **New Grades**
-  - 📅 **Schedule Changes**
-  - 📧 **New Emails**
-- **Dockerized:** Runs in a container so you can host it on a server and touch grass.
-- **Sleep Schedule:** The bot pauses between **01:00 and 06:00** so you don't get flagged for suspicious activity (and so you can sleep).
+  - 📊 **New Grades:** Find out you failed math before your teacher even closes the tab.
+  - 📅 **Schedule Changes:** Detects **New**, **Cancelled**, and **Moved** lessons automatically.
+  - 📧 **New Emails:** Because who actually checks their school email?
+- **Session Persistence:** Saves your login cookies (`browser_state.json`) so it doesn't have to log in every time.
+- **Sleep Schedule:** The bot pauses between **01:00 and 06:00** (configurable) so you don't get flagged for suspicious activity.
 - **Jitter:** Randomized check intervals so the traffic looks organic, not robotic.
 
 ---
 
-## 🐳 Docker Method (Recommended)
+## 🐳 The "I Have a Server" Method (Recommended)
 
-If you are running this on a proper server with Docker, you can use this method.
+If you are running this on a proper server (Ubuntu/Debian) with Docker, you are winning.
 
 ### 1. Clone & Configure
 
@@ -40,6 +40,10 @@ services:
       - PASSWORD=your_super_secret_password
       - DISCORD_WEBHOOK=[https://discord.com/api/webhooks/YOUR_WEBHOOK_URL](https://discord.com/api/webhooks/YOUR_WEBHOOK_URL)
       - TOKEN_FILE=/app/data/access_token.txt
+      # Configurable Sleep & Check Times
+      - SLEEP_START=23 # 11 PM
+      - SLEEP_END=6 # 6 AM
+      - CHECK_INTERVAL=120 # Check every 120 seconds (2 mins)
     volumes:
       - ./magister_data:/app/data
 ```
@@ -53,9 +57,9 @@ docker compose up --build -d
 
 ```
 
-### 3. Verify
+### 3. Verify & Watch Logs
 
-Check if the bot is actually working or if it crashed immediately:
+Check the logs to see the bot in action. You will see it navigating the Microsoft login flow in real-time.
 
 ```bash
 docker logs -f magister_surveillance
@@ -64,9 +68,9 @@ docker logs -f magister_surveillance
 
 ---
 
-## 💻 The System Library Method
+## 💻 The "I Run This on My Laptop" Method
 
-If you want to run this locally:
+If you want to run this locally like a savage:
 
 ### 1. Install Dependencies
 
@@ -91,6 +95,9 @@ USERNAME=your_username
 PASSWORD=your_password
 DISCORD_WEBHOOK=[https://discord.com/api/webhooks/YOUR_WEBHOOK](https://discord.com/api/webhooks/YOUR_WEBHOOK)
 TOKEN_FILE=access_token.txt
+SLEEP_START=1
+SLEEP_END=6
+CHECK_INTERVAL=300
 
 ```
 
@@ -100,6 +107,23 @@ TOKEN_FILE=access_token.txt
 python3 server.py
 
 ```
+
+---
+
+## 📜 Log Guide
+
+When you look at the logs (`docker logs -f magister_surveillance`), here is what you are seeing:
+
+- **[Auth] 🚀 Launching Headless Browser...**
+  The bot is starting up the invisible browser.
+- **[Auth] 🌍 Opening https://...**
+  It is navigating to your school's login page.
+- **[Auth] 👤 Filling in Username / ✍️ Filling in Password**
+  It is typing your credentials just like a human would.
+- **[Auth] 💾 Session saved**
+  It successfully logged in and saved the cookies. The next time it runs, it will skip the login screen entirely!
+- **[14:05:00] 💤 Sleeping...**
+  It's past your bedtime (defined in `SLEEP_START`). The bot is hibernating.
 
 ---
 
@@ -114,14 +138,3 @@ Using automated scripts to access Magister may violate their Terms of Service. I
 - The bot sleeps at night for a reason.
 - The check interval has "jitter" (random delay) for a reason.
 - Don't remove these safety features unless you want an IP ban.
-
-## 🐛 Troubleshooting
-
-**"It says `MagisterPy not found`"**
-You didn't install the package. Run `pip install .` in the root folder.
-
-**"It gets stuck on `Navigating to...`"**
-Magister is blocking you. The `auth.py` script tries to hide the `navigator.webdriver` flag, but sometimes their security gets tighter. Try running it again later.
-
-**"My password is in the logs!"**
-Stop sharing your screen.
