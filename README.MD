@@ -1,4 +1,4 @@
-# ![MagisterPy](https://github.com/user-attachments/assets/47bd3819-8d4e-4e3e-82e6-b63ee9b66c3b)
+# ![MagisterPy](magisterpy.png)
 
 # MagisterPy 🕵️‍♂️
 
@@ -93,7 +93,7 @@ Create a file named `.env` in the root folder (next to `server.py`). **Do not co
 SCHOOL=https://YOUR_SCHOOL.magister.net
 USERNAME=your_username
 PASSWORD=your_password
-DISCORD_WEBHOOK=[https://discord.com/api/webhooks/YOUR_WEBHOOK](https://discord.com/api/webhooks/YOUR_WEBHOOK)
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/YOUR_WEBHOOK
 TOKEN_FILE=access_token.txt
 SLEEP_START=1
 SLEEP_END=6

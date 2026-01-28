@@ -13,4 +13,6 @@ RUN pip install --no-cache-dir .
 
 RUN playwright install --with-deps chromium-headless-shell
 
+ENV PYTHONUNBUFFERED=1
+
 CMD ["python", "server.py"]
