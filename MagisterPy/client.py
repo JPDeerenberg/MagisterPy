@@ -7,7 +7,6 @@ from .models import (
     StudyGuide, StudyGuideItem, Assignment
 )
 
-# Use a real browser User-Agent so Magister thinks we are Chrome
 REALISTIC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 class MagisterClient:
@@ -20,13 +19,12 @@ class MagisterClient:
             base_url=self.base_url, 
             headers={
                 "Authorization": self.token,
-                "User-Agent": REALISTIC_USER_AGENT, # Spoofed
+                "User-Agent": REALISTIC_USER_AGENT,
                 "Accept": "application/json",
-                "Referer": "https://magister.net/"  # Extra credibility
+                "Referer": "https://magister.net/"
             }
         )
 
-    # ... (The rest of the file remains exactly the same)
     async def __aenter__(self):
         return self
 
@@ -83,10 +81,15 @@ class MagisterClient:
     async def get_study_guide_items(self, guide_id: int) -> List[StudyGuideItem]:
         pid = await self._get_me()
         resp = await self.client.get(f"/api/leerlingen/{pid}/studiewijzers/{guide_id}/onderdelen")
-        if resp.status_code in [204, 404]: return []
+        
+        
+        if resp.status_code == 204: 
+            return []
+            
         resp.raise_for_status()
-        try: data = resp.json()
-        except: return []
+        
+        
+        data = resp.json()
         return [StudyGuideItem(**i) for i in data.get("Items", [])]
 
     async def get_assignments(self, open_only: bool = False) -> List[Assignment]:

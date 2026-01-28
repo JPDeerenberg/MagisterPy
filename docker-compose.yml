@@ -10,6 +10,9 @@ services:
       - PASSWORD=YOUR_PASSWORD
       - DISCORD_WEBHOOK=YOUR_WEBHOOK_URL
       - TOKEN_FILE=/app/data/access_token.txt
+      - SLEEP_START=23
+      - SLEEP_END=6
+      - CHECK_INTERVAL=120
 
     volumes:
       - ./magister_data:/app/data

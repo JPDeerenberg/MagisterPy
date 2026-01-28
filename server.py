@@ -5,14 +5,14 @@ import httpx
 import random
 import time
 from datetime import date, timedelta, datetime
+from typing import Optional, Dict, Set
 
-# Load the .env file
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    print("📂 Loaded configuration from .env")
 except ImportError:
-    print("⚠️ python-dotenv not installed. Relying on system environment variables.")
+    pass 
 
 try:
     from MagisterPy import MagisterClient, MagisterAuth
@@ -20,151 +20,204 @@ except ImportError:
     print("❌ CRITICAL: MagisterPy not found. Run 'pip install .' first.")
     exit(1)
 
-# CONFIGURATION
-SCHOOL = os.getenv("SCHOOL")
-USERNAME = os.getenv("USERNAME")
-PASSWORD = os.getenv("PASSWORD")
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
-TOKEN_FILE = os.getenv("TOKEN_FILE", "access_token.txt")
-
-if not SCHOOL or not USERNAME or not PASSWORD:
-    print("❌ CONFIG ERROR: Missing credentials in .env file.")
-    exit(1)
-
-if os.path.dirname(TOKEN_FILE):
-    os.makedirs(os.path.dirname(TOKEN_FILE), exist_ok=True)
-
-# STEALTH SETTINGS
-BASE_INTERVAL = 60          
-JITTER_RANGE = (-10, 40)    
-SLEEP_START_HOUR = 1        
-SLEEP_END_HOUR = 6          
-
-# STATE
-state = {
-    "seen_grade_ids": set(),
-    "seen_message_ids": set(),
-    "schedule_hashes": {},
-    "initialized": False
-}
-
-async def send_discord_notification(text: str):
-    if "YOUR_WEBHOOK" in str(DISCORD_WEBHOOK) or not DISCORD_WEBHOOK:
-        print(f"⚠️ [Mock Discord] {text}")
-        return
-
-    async with httpx.AsyncClient() as client:
-        try:
-            payload = {
-                "username": "Magister Ninja",
-                "content": text
-            }
-            await client.post(DISCORD_WEBHOOK, json=payload)
-        except Exception as e:
-            print(f"❌ Failed to notify Discord: {e}")
-
-async def refresh_session():
-    print(f"🔄 Refreshing token for {USERNAME}...")
-    try:
-        auth = MagisterAuth(SCHOOL, USERNAME, PASSWORD)
-        token = await auth.get_token()
-        with open(TOKEN_FILE, "w") as f:
-            f.write(token)
-        print("✅ Token refreshed.")
-        return token
-    except Exception as e:
-        print(f"💀 Login Failed: {e}")
-        await send_discord_notification(f"⚠️ **Bot Error**: Token refresh failed.")
-        return None
-
-def compute_appointment_hash(appt):
-    # Using getattr for info_type to be safe if model isn't updated
-    info = getattr(appt, "info_type", 0) 
-    raw = f"{appt.id}|{appt.start}|{appt.end}|{appt.location}|{appt.description}|{info}"
-    return hashlib.md5(raw.encode()).hexdigest()
-
-def is_sleeping_hours():
-    now = datetime.now().hour
-    if SLEEP_START_HOUR <= now < SLEEP_END_HOUR:
-        return True
-    return False
-
-async def check_updates():
-    if not os.path.exists(TOKEN_FILE):
-        token = await refresh_session()
-    else:
-        with open(TOKEN_FILE, "r") as f:
-            token = f.read().strip()
-
-    if not token: return
-
-    try:
-        async with MagisterClient(SCHOOL, token) as m:
-            
-            # 1. Grades
-            grades = await m.get_grades(limit=10)
-            new_grades = [g for g in grades if g.id not in state["seen_grade_ids"]]
-            
-            if new_grades and state["initialized"]:
-                for g in new_grades:
-                    print(f"🔔 New Grade: {g.subject.description}")
-                    await send_discord_notification(f"📊 **New Grade**: {g.subject.description}")
-            state["seen_grade_ids"].update(g.id for g in grades)
-
-            # 2. Messages
-            folders = await m.get_folders()
-            inbox = next((f for f in folders if "Postvak IN" in f.name), None)
-            if inbox:
-                msgs = await m.get_messages(inbox.id, limit=5)
-                new_msgs = [msg for msg in msgs if msg.id not in state["seen_message_ids"]]
-                if new_msgs and state["initialized"]:
-                    for msg in new_msgs:
-                        print(f"🔔 New Mail: {msg.sender_name}")
-                        await send_discord_notification(f"📧 **Mail**: From {msg.sender_name}")
-                state["seen_message_ids"].update(msg.id for msg in msgs)
-
-            # 3. Schedule
-            today = date.today()
-            appts = await m.get_schedule(today, today + timedelta(days=1))
-            current_hashes = {}
-            for appt in appts:
-                h = compute_appointment_hash(appt)
-                current_hashes[appt.id] = h
-                if state["initialized"] and appt.id in state["schedule_hashes"]:
-                    if state["schedule_hashes"][appt.id] != h:
-                        print(f"🔔 Schedule Update: {appt.description}")
-                        await send_discord_notification(f"📅 **Update**: {appt.description}")
-            state["schedule_hashes"] = current_hashes
-
-            if not state["initialized"]:
-                print(f"✅ Monitoring initialized.")
-                state["initialized"] = True
-
-    except Exception as e:
-        if "401" in str(e) or "403" in str(e):
-            print("🔒 Token expired.")
-            await refresh_session()
-        else:
-            print(f"⚠️ Error: {e}")
-
-async def run_server():
-    print("🚀 Magister Ninja Server Started.")
-    
-    while True:
-        if is_sleeping_hours():
-            print("💤 Zzz... (Sleeping mode active)")
-            await asyncio.sleep(1800) 
-            continue
-
-        await check_updates()
+class MagisterMonitor:
+    def __init__(self):
         
-        jitter = random.uniform(*JITTER_RANGE)
-        sleep_time = BASE_INTERVAL + jitter
-        print(f"⏳ Waiting {sleep_time:.1f}s...")
-        await asyncio.sleep(sleep_time)
+        self.school = os.getenv("SCHOOL")
+        self.username = os.getenv("USERNAME")
+        self.password = os.getenv("PASSWORD")
+        self.webhook = os.getenv("DISCORD_WEBHOOK")
+        self.token_file = os.getenv("TOKEN_FILE", "access_token.txt")
+        self.state_file = os.path.join(os.path.dirname(self.token_file), "browser_state.json")
+
+        
+        self.base_interval = int(os.getenv("CHECK_INTERVAL", 300))
+        self.jitter_range = (-30, 60)
+        
+        try:
+            self.sleep_start = int(os.getenv("SLEEP_START", 1)) 
+            self.sleep_end = int(os.getenv("SLEEP_END", 6))     
+        except ValueError:
+            self.sleep_start = 1
+            self.sleep_end = 6
+
+        
+        self.seen_grade_ids: Set[int] = set()
+        self.seen_message_ids: Set[int] = set()
+        self.schedule_cache: Dict[int, dict] = {} 
+        self.initialized = False
+        self.last_heartbeat = 0
+
+        
+        if not all([self.school, self.username, self.password]):
+            print("❌ CONFIG ERROR: Missing credentials in .env file.")
+            exit(1)
+            
+        if os.path.dirname(self.token_file):
+            os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
+
+    def log(self, text: str, icon: str = "ℹ️"):
+        """Prints a clean, timestamped log message."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {icon} {text}")
+
+    async def _send_discord(self, text: str):
+        if not self.webhook or "YOUR_WEBHOOK" in self.webhook:
+            self.log(f"[Mock Discord] {text}", "🤖")
+            return
+
+        async with httpx.AsyncClient() as client:
+            try:
+                payload = {
+                    "username": "Magister Ninja",
+                    "avatar_url": "https://i.imgur.com/bM8k8s6.png",
+                    "content": text
+                }
+                await client.post(self.webhook, json=payload)
+            except Exception as e:
+                self.log(f"Failed to notify Discord: {e}", "❌")
+
+    async def _refresh_session(self) -> Optional[str]:
+        self.log(f"Refreshing token for {self.username}...", "🔄")
+        try:
+            
+            auth = MagisterAuth(self.school, self.username, self.password, state_file=self.state_file)
+            token = await auth.get_token()
+            
+            with open(self.token_file, "w") as f:
+                f.write(token)
+            self.log("Session refreshed successfully.", "✅")
+            return token
+        except Exception as e:
+            self.log(f"Login Failed: {e}", "💀")
+            await self._send_discord(f"⚠️ **Bot Error**: Login failed. Check logs.")
+            return None
+
+    def _compute_hash(self, appt) -> str:
+        info = getattr(appt, "info_type", 0)
+        raw = f"{appt.id}|{appt.start}|{appt.end}|{appt.location}|{appt.description}|{info}|{appt.content}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def _is_sleeping(self) -> bool:
+        now = datetime.now().hour
+        if self.sleep_start < self.sleep_end:
+            return self.sleep_start <= now < self.sleep_end
+        else:
+            return now >= self.sleep_start or now < self.sleep_end
+
+    async def check_updates(self):
+        token = None
+        if os.path.exists(self.token_file):
+            with open(self.token_file, "r") as f:
+                token = f.read().strip()
+        
+        if not token:
+            token = await self._refresh_session()
+            if not token: return
+
+        try:
+            async with MagisterClient(self.school, token) as m:
+                
+                
+                grades = await m.get_grades(limit=10)
+                new_grades = [g for g in grades if g.id not in self.seen_grade_ids]
+                
+                if new_grades and self.initialized:
+                    for g in new_grades:
+                        self.log(f"New Grade: {g.subject.description} -> {g.value}", "🔔")
+                        await self._send_discord(f"📊 **New Grade**: {g.subject.description} - **{g.value}**")
+                self.seen_grade_ids.update(g.id for g in grades)
+
+                
+                folders = await m.get_folders()
+                inbox = next((f for f in folders if "Postvak IN" in f.name), None)
+                if inbox:
+                    msgs = await m.get_messages(inbox.id, limit=5)
+                    new_msgs = [msg for msg in msgs if msg.id not in self.seen_message_ids]
+                    if new_msgs and self.initialized:
+                        for msg in new_msgs:
+                            self.log(f"New Mail: {msg.sender_name}", "📧")
+                            await self._send_discord(f"📧 **Mail**: From {msg.sender_name}\nSubject: {msg.subject}")
+                    self.seen_message_ids.update(msg.id for msg in msgs)
+
+                
+                today = date.today()
+                appts = await m.get_schedule(today, today + timedelta(days=1))
+                
+                current_map = {}
+                for appt in appts:
+                    current_map[appt.id] = {
+                        "hash": self._compute_hash(appt),
+                        "desc": appt.description,
+                        "start": appt.start.strftime("%H:%M"),
+                        "loc": appt.location or "?"
+                    }
+
+                if self.initialized:
+                    previous_map = self.schedule_cache
+                    current_ids = set(current_map.keys())
+                    previous_ids = set(previous_map.keys())
+
+                    for aid in (current_ids - previous_ids):
+                        data = current_map[aid]
+                        self.log(f"Lesson Added: {data['desc']}", "📅")
+                        await self._send_discord(f"📅 **New Lesson**: {data['desc']}\nTime: {data['start']} ({data['loc']})")
+
+                    for rid in (previous_ids - current_ids):
+                        old_data = previous_map[rid]
+                        self.log(f"Lesson Removed: {old_data['desc']}", "🗑️")
+                        await self._send_discord(f"🗑️ **Lesson Cancelled/Removed**: {old_data['desc']}\nWas at: {old_data['start']}")
+
+                    for cid in (current_ids & previous_ids):
+                        if current_map[cid]["hash"] != previous_map[cid]["hash"]:
+                            data = current_map[cid]
+                            self.log(f"Lesson Changed: {data['desc']}", "✏️")
+                            await self._send_discord(f"✏️ **Lesson Updated**: {data['desc']}\nTime: {data['start']} ({data['loc']})")
+
+                self.schedule_cache = current_map
+
+                if not self.initialized:
+                    self.log(f"Monitoring initialized. Tracking {len(current_map)} items.", "🚀")
+                    self.initialized = True
+
+        except Exception as e:
+            if "401" in str(e) or "403" in str(e):
+                self.log("Token expired. Refreshing...", "🔒")
+                await self._refresh_session()
+            else:
+                self.log(f"Error during check: {e}", "⚠️")
+
+    async def run(self):
+        self.log("Magister Ninja started.", "🥷")
+        self.log(f"Sleep schedule: {self.sleep_start}:00 - {self.sleep_end}:00", "💤")
+        
+        while True:
+            
+            if self._is_sleeping():
+                
+                if time.time() - self.last_heartbeat > 3600:
+                    self.log("Sleeping...", "💤")
+                    self.last_heartbeat = time.time()
+                await asyncio.sleep(1800)
+                continue
+
+            await self.check_updates()
+            
+            
+            if time.time() - self.last_heartbeat > 3600:
+                self.log("Still running. No new changes.", "💓")
+                self.last_heartbeat = time.time()
+
+            
+            jitter = random.uniform(*self.jitter_range)
+            sleep_time = self.base_interval + jitter
+            
+            
+            await asyncio.sleep(sleep_time)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(run_server())
+        bot = MagisterMonitor()
+        asyncio.run(bot.run())
     except KeyboardInterrupt:
         print("\n👋 Exiting.")

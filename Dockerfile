@@ -1,13 +1,16 @@
-FROM mcr.microsoft.com/playwright/python:v1.48.0-noble
+FROM python:3.9-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . /app
 
-RUN pip install .
+RUN pip install --no-cache-dir .
 
-RUN playwright install chromium
-
-ENV PYTHONUNBUFFERED=1
+RUN playwright install chromium-headless-shell
 
 CMD ["python", "server.py"]
