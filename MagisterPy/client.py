@@ -1,13 +1,21 @@
 import httpx
 from datetime import date
 from typing import List
+import logging
+
+try:
+    from fake_useragent import UserAgent
+    HAS_FAKE_UA = True
+except ImportError:
+    HAS_FAKE_UA = False
+
 from .models import (
     Appointment, Grade, AccountInfo, 
     MessageFolder, Message, 
     StudyGuide, StudyGuideItem, Assignment
 )
 
-REALISTIC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+FALLBACK_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
 class MagisterClient:
     def __init__(self, base_url: str, token: str):
@@ -15,11 +23,19 @@ class MagisterClient:
         self.token = token if token.startswith("Bearer ") else f"Bearer {token}"
         self.person_id = None
         
+        self.user_agent = FALLBACK_USER_AGENT
+        if HAS_FAKE_UA:
+            try:
+                ua = UserAgent(browsers=['chrome', 'edge', 'firefox'])
+                self.user_agent = ua.random
+            except Exception as e:
+                logging.warning(f"Failed to generate fake user agent: {e}. Using fallback.")
+        
         self.client = httpx.AsyncClient(
             base_url=self.base_url, 
             headers={
                 "Authorization": self.token,
-                "User-Agent": REALISTIC_USER_AGENT,
+                "User-Agent": self.user_agent,
                 "Accept": "application/json",
                 "Referer": "https://magister.net/"
             }
@@ -82,12 +98,10 @@ class MagisterClient:
         pid = await self._get_me()
         resp = await self.client.get(f"/api/leerlingen/{pid}/studiewijzers/{guide_id}/onderdelen")
         
-        
         if resp.status_code == 204: 
             return []
             
         resp.raise_for_status()
-        
         
         data = resp.json()
         return [StudyGuideItem(**i) for i in data.get("Items", [])]

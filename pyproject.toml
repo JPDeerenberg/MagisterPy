@@ -17,7 +17,8 @@ dependencies = [
     "playwright",
     "beautifulsoup4",
     "python-dotenv",
-    "pydantic"
+    "pydantic",
+    "fake-useragent"
 ]
 
 [project.urls]
