@@ -9,6 +9,7 @@ import sys
 from datetime import date, timedelta, datetime
 from typing import Optional, Dict, Set
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s %(message)s",
@@ -17,11 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MagisterNinja")
 
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass 
+
 
 try:
     from MagisterPy import MagisterClient, MagisterAuth
@@ -98,7 +101,9 @@ class MagisterMonitor:
 
     def _compute_hash(self, appt) -> str:
         info = getattr(appt, "info_type", 0)
-        raw = f"{appt.id}|{appt.start}|{appt.end}|{appt.location}|{appt.description}|{info}|{appt.content}"
+        
+        start_str = appt.start.strftime("%Y-%m-%d %H:%M")
+        raw = f"{appt.id}|{start_str}|{appt.end}|{appt.location}|{appt.description}|{info}|{appt.content}"
         return hashlib.md5(raw.encode()).hexdigest()
 
     def _is_sleeping(self) -> bool:
@@ -133,6 +138,7 @@ class MagisterMonitor:
         try:
             async with MagisterClient(self.school, token) as m:
                 
+                
                 grades = await m.get_grades(limit=10)
                 new_grades = [g for g in grades if g.id not in self.seen_grade_ids]
                 
@@ -142,6 +148,7 @@ class MagisterMonitor:
                         await self._send_discord(f"📊 **New Grade**: {g.subject.description} - **{g.value}**")
                 self.seen_grade_ids.update(g.id for g in grades)
 
+                
                 folders = await m.get_folders()
                 inbox = next((f for f in folders if "Postvak IN" in f.name), None)
                 if inbox:
@@ -153,6 +160,7 @@ class MagisterMonitor:
                             await self._send_discord(f"📧 **Mail**: From {msg.sender_name}\nSubject: {msg.subject}")
                     self.seen_message_ids.update(msg.id for msg in msgs)
 
+                
                 assignments = await m.get_assignments(open_only=True)
                 new_assignments = [a for a in assignments if a.id not in self.seen_assignment_ids]
                 
@@ -163,39 +171,50 @@ class MagisterMonitor:
                         await self._send_discord(f"📚 **New Assignment**: {a.title}\nDue: {deadline_str}")
                 self.seen_assignment_ids.update(a.id for a in assignments)
 
+                
                 today = date.today()
+                date_rollover = False
+                
+                
                 
                 if self.schedule_date != today:
-                    logger.info(f"Date changed to {today}. Resetting schedule cache.")
-                    self.schedule_cache = {}
+                    logger.info(f"Date changed to {today}. Initiating silent cache rollover.")
                     self.schedule_date = today
-                    
+                    date_rollover = True
+
+                
                 appts = await m.get_schedule(today, today + timedelta(days=1))
                 
                 current_map = {}
                 for appt in appts:
-                    current_map[appt.id] = {
-                        "hash": self._compute_hash(appt),
-                        "desc": appt.description,
-                        "start": appt.start.strftime("%H:%M"),
-                        "loc": appt.location or "?"
-                    }
+                    
+                    if appt.start.date() == today:
+                        current_map[appt.id] = {
+                            "hash": self._compute_hash(appt),
+                            "desc": appt.description,
+                            "start": appt.start.strftime("%H:%M"),
+                            "loc": appt.location or "?"
+                        }
 
-                if self.initialized:
+                
+                if self.initialized and not date_rollover:
                     previous_map = self.schedule_cache
                     current_ids = set(current_map.keys())
                     previous_ids = set(previous_map.keys())
 
+                    
                     for aid in (current_ids - previous_ids):
                         data = current_map[aid]
                         logger.info(f"Lesson Added: {data['desc']}")
                         await self._send_discord(f"📅 **New Lesson**: {data['desc']}\nTime: {data['start']} ({data['loc']})")
 
+                    
                     for rid in (previous_ids - current_ids):
                         old_data = previous_map[rid]
                         logger.info(f"Lesson Removed: {old_data['desc']}")
                         await self._send_discord(f"🗑️ **Lesson Cancelled/Removed**: {old_data['desc']}\nWas at: {old_data['start']}")
 
+                    
                     for cid in (current_ids & previous_ids):
                         if current_map[cid]["hash"] != previous_map[cid]["hash"]:
                             data = current_map[cid]
