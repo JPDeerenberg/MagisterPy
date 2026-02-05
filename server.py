@@ -10,13 +10,30 @@ from datetime import date, timedelta, datetime
 from typing import Optional, Dict, Set
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s %(message)s",
-    datefmt="%H:%M:%S",
-    stream=sys.stdout
-)
+class EmojiFormatter(logging.Formatter):
+    LEVEL_EMOJI = {
+        logging.DEBUG: "🐞",
+        logging.INFO: "ℹ️",
+        logging.WARNING: "⚠️",
+        logging.ERROR: "❌",
+        logging.CRITICAL: "🚨",
+    }
+
+    def format(self, record):
+        emoji = self.LEVEL_EMOJI.get(record.levelno, "")
+        # Prepend emoji to the level name for display
+        record.levelname = f"{emoji} {record.levelname}"
+        return super().format(record)
+
+
+handler = logging.StreamHandler(sys.stdout)
+formatter = EmojiFormatter("[%(asctime)s] %(levelname)s %(message)s", datefmt="%H:%M:%S")
+handler.setFormatter(formatter)
+
 logger = logging.getLogger("MagisterNinja")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.propagate = False
 
 
 try:
@@ -151,10 +168,7 @@ class MagisterMonitor:
             return None
 
     def _extract_assignment_info(self, assignment) -> tuple:
-        """
-    def _extract_assignment_info(self, assignment) -> tuple:
-        """
-        Extract title and subject from assignment object.
+        """Extract title and subject from assignment object.
         Returns (title, subject_str).
         """
         title = getattr(assignment, 'title', 'Unknown')
@@ -169,7 +183,6 @@ class MagisterMonitor:
         """
         try:
             assignments = await client.get_assignments()
-            now = datetime.now()
 
             for assignment in assignments:
                 
@@ -178,10 +191,15 @@ class MagisterMonitor:
                     
                 deadline = assignment.deadline
                 if isinstance(deadline, date) and not isinstance(deadline, datetime):
-                    
                     deadline = datetime.combine(deadline, datetime.max.time())
                 elif not isinstance(deadline, datetime):
                     continue  
+                
+                
+                if getattr(deadline, 'tzinfo', None) is not None and deadline.tzinfo.utcoffset(deadline) is not None:
+                    now = datetime.now(tz=deadline.tzinfo)
+                else:
+                    now = datetime.now()
 
                 time_until_deadline = deadline - now
                 hours_remaining = time_until_deadline.total_seconds() / 3600
@@ -244,12 +262,13 @@ class MagisterMonitor:
                 
                 try:
                     grades = await m.get_grades(limit=10)
-                    new_grades = [g for g in grades if g.id not in self.seen_grade_ids]
-                    if new_grades and self.initialized:
-                        for g in new_grades:
-                            await self._send_discord(f"📊 **New Grade**: {g.subject.description} - **{g.value}**")
-                    self.seen_grade_ids.update(g.id for g in grades)
-                except Exception as e: logger.error(f"Error checking grades: {e}")
+                    
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code in (401, 403):
+                        raise e  
+                    logger.error(f"Error checking grades: {e}")
+                except Exception as e:
+                    logger.error(f"Error checking grades: {e}")
 
                 
                 await self._check_assignment_deadlines(m)
