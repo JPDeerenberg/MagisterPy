@@ -3,3 +3,5 @@ source venv/bin/activate
 python3 MagisterPy/server.py
 
 nohup docker compose up --build -d &
+
+docker builder prune

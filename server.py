@@ -21,7 +21,7 @@ class EmojiFormatter(logging.Formatter):
 
     def format(self, record):
         emoji = self.LEVEL_EMOJI.get(record.levelno, "")
-        # Prepend emoji to the level name for display
+        
         record.levelname = f"{emoji} {record.levelname}"
         return super().format(record)
 
@@ -35,6 +35,10 @@ logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 logger.propagate = False
 
+
+logging.getLogger("MagisterPy").setLevel(logging.CRITICAL)
+logging.getLogger("playwright").setLevel(logging.CRITICAL)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 try:
     from dotenv import load_dotenv
