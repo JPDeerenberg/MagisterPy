@@ -9,7 +9,7 @@ import sys
 from datetime import date, timedelta, datetime
 from typing import Optional, Dict, Set
 
-# --- LOGGING SETUP ---
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s %(message)s",
@@ -18,14 +18,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MagisterNinja")
 
-# --- ENVIRONMENT VARIABLES ---
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass 
 
-# --- IMPORT MAGISTERPY ---
+
 try:
     from MagisterPy import MagisterClient, MagisterAuth
 except ImportError:
@@ -44,7 +44,7 @@ class MagisterMonitor:
         self.base_interval = int(os.getenv("CHECK_INTERVAL", 300))
         self.jitter_range = (-30, 60)
         
-        # Parse Sleep Schedule
+        
         try:
             self.sleep_start = int(os.getenv("SLEEP_START", 1)) 
             self.sleep_end = int(os.getenv("SLEEP_END", 6))     
@@ -52,19 +52,21 @@ class MagisterMonitor:
             self.sleep_start = 1
             self.sleep_end = 6
 
-        # Tracking State
+        
         self.seen_grade_ids: Set[int] = set()
-        self.seen_message_ids: Set[int] = set()
-        self.seen_assignment_ids: Set[int] = set() 
+        self.assignment_24h_notified: Set[int] = set()  
+        self.assignment_1h_notified: Set[int] = set()   
         
         self.schedule_cache: Dict[int, dict] = {} 
         self.schedule_date = None
         
         self.initialized = False
         self.last_heartbeat = 0
+        self.last_check_time = 0  
         
-        # --- CONFIGURATION GUARDS ---
-        self.MAX_CHANGES_THRESHOLD = 5  # If >5 changes happen at once, assume glitch and ignore.
+        
+        self.MAX_CHANGES_THRESHOLD = 5  
+        self.SLEEP_GAP_THRESHOLD = 3600  
 
         if not all([self.school, self.username, self.password]):
             logger.critical("CONFIG ERROR: Missing credentials in .env file.")
@@ -107,7 +109,7 @@ class MagisterMonitor:
     def _compute_hash(self, appt) -> str:
         """Create a unique fingerprint for an appointment."""
         info = getattr(appt, "info_type", 0)
-        # We include ID, Start, End, Location, Description, InfoType, Content
+        
         start_str = appt.start.strftime("%Y-%m-%d %H:%M")
         raw = f"{appt.id}|{start_str}|{appt.end}|{appt.location}|{appt.description}|{info}|{appt.content}"
         return hashlib.md5(raw.encode()).hexdigest()
@@ -135,7 +137,7 @@ class MagisterMonitor:
             appts = await client.get_schedule(day, day + timedelta(days=1))
             current_map = {}
             for appt in appts:
-                # Double check the date to ensure API didn't return next day's items by mistake
+                
                 if appt.start.date() == day:
                     current_map[appt.id] = {
                         "hash": self._compute_hash(appt),
@@ -148,7 +150,84 @@ class MagisterMonitor:
             logger.error(f"Failed to fetch schedule: {e}")
             return None
 
+    def _extract_assignment_info(self, assignment) -> tuple:
+        """
+    def _extract_assignment_info(self, assignment) -> tuple:
+        """
+        Extract title and subject from assignment object.
+        Returns (title, subject_str).
+        """
+        title = getattr(assignment, 'title', 'Unknown')
+        subject = getattr(assignment, 'subject', None)
+        subject_str = f"{subject.description}" if subject and hasattr(subject, 'description') else "Unknown Subject"
+        return title, subject_str
+
+    async def _check_assignment_deadlines(self, client: MagisterClient):
+        """
+        Check for upcoming assignment deadlines and send notifications.
+        Sends at 24 hours and 1 hour before deadline.
+        """
+        try:
+            assignments = await client.get_assignments()
+            now = datetime.now()
+
+            for assignment in assignments:
+                
+                if not hasattr(assignment, 'deadline'):
+                    continue
+                    
+                deadline = assignment.deadline
+                if isinstance(deadline, date) and not isinstance(deadline, datetime):
+                    
+                    deadline = datetime.combine(deadline, datetime.max.time())
+                elif not isinstance(deadline, datetime):
+                    continue  
+
+                time_until_deadline = deadline - now
+                hours_remaining = time_until_deadline.total_seconds() / 3600
+                
+                title, subject_str = self._extract_assignment_info(assignment)
+                deadline_str = deadline.strftime('%Y-%m-%d %H:%M')
+
+                
+                if 23 < hours_remaining <= 24 and assignment.id not in self.assignment_24h_notified:
+                    self.assignment_24h_notified.add(assignment.id)
+                    logger.info(f"Assignment 24h Warning: {title}")
+                    await self._send_discord(
+                        f"⏰ **Assignment Due in 24 Hours**\n"
+                        f"Title: {title}\n"
+                        f"Subject: {subject_str}\n"
+                        f"Deadline: {deadline_str}"
+                    )
+
+                
+                elif 0.5 < hours_remaining <= 1 and assignment.id not in self.assignment_1h_notified:
+                    self.assignment_1h_notified.add(assignment.id)
+                    logger.info(f"Assignment 1h Warning: {title}")
+                    await self._send_discord(
+                        f"🚨 **Assignment Due in 1 Hour**\n"
+                        f"Title: {title}\n"
+                        f"Subject: {subject_str}\n"
+                        f"Deadline: {deadline_str}"
+                    )
+
+                
+                elif hours_remaining < 0:
+                    self.assignment_24h_notified.discard(assignment.id)
+                    self.assignment_1h_notified.discard(assignment.id)
+
+        except Exception as e:
+            logger.error(f"Failed to check assignment deadlines: {e}")
+
     async def check_updates(self):
+        
+        current_time = time.time()
+        time_since_last_check = current_time - self.last_check_time
+        is_post_sleep = (self.initialized and time_since_last_check > self.SLEEP_GAP_THRESHOLD)
+        
+        if is_post_sleep:
+            logger.warning(f"⏰ FALLBACK 1: Large time gap detected ({time_since_last_check:.0f}s). Treating as potential day rollover.")
+        
         token = None
         if os.path.exists(self.token_file):
             with open(self.token_file, "r") as f:
@@ -161,8 +240,8 @@ class MagisterMonitor:
         try:
             async with MagisterClient(self.school, token) as m:
                 
-                # --- GRADES, MAIL, ASSIGNMENTS (Standard Logic) ---
-                # (Keeping this concise as the focus is the schedule)
+                
+                
                 try:
                     grades = await m.get_grades(limit=10)
                     new_grades = [g for g in grades if g.id not in self.seen_grade_ids]
@@ -172,102 +251,106 @@ class MagisterMonitor:
                     self.seen_grade_ids.update(g.id for g in grades)
                 except Exception as e: logger.error(f"Error checking grades: {e}")
 
-                # --- SCHEDULE LOGIC (THE STARK PROTOCOL) ---
+                
+                await self._check_assignment_deadlines(m)
+
+                
                 today = date.today()
                 
-                # Check 1: Is this a new day?
-                # If yes, we mark it, but we wait until we successfully fetch data to "commit" the new day.
+                
+                
                 is_new_day = (self.schedule_date != today)
                 if is_new_day:
                     logger.info(f"📅 Date changed: {self.schedule_date} -> {today}. Resetting cache silently.")
+                    
+                    self.schedule_cache = {}
 
-                # FETCH 1: Primary Fetch
+                
                 current_map = await self._fetch_schedule_safe(m, today)
-                if current_map is None: return # Network error, skip
+                if current_map is None: return 
 
-                # FALLBACK: Double-Tap Verification
-                # If we detect changes, we wait 5 seconds and fetch AGAIN to ensure it wasn't a glitch.
-                # We skip this check on the very first run or if it's a new day (since everything is 'new' then).
+                
+                
+                
                 if self.initialized and not is_new_day:
                     current_ids = set(current_map.keys())
                     previous_ids = set(self.schedule_cache.keys())
                     
-                    # Calculate potential changes
+                    
                     added = len(current_ids - previous_ids)
                     removed = len(previous_ids - current_ids)
                     
                     if added > 0 or removed > 0:
                         logger.info(f"Changes detected (+{added}/-{removed}). Verifying stability...")
-                        await asyncio.sleep(5) # Wait for API to settle
+                        await asyncio.sleep(5) 
                         
-                        # FETCH 2: Verification Fetch
+                        
                         verify_map = await self._fetch_schedule_safe(m, today)
                         if verify_map is None: 
                             logger.warning("Verification fetch failed. Aborting update.")
                             return
                         
-                        # Compare Hash of Maps to ensure they are identical
-                        # (Simplest way: are the keys the same?)
+                        
+                        
                         if set(verify_map.keys()) != set(current_map.keys()):
                             logger.warning("🛡️ STARK PROTOCOL: Data is unstable (flapping). Ignoring update.")
                             return
                         
-                        current_map = verify_map # Data is confirmed stable
+                        current_map = verify_map 
 
-                # --- SANITY CHECKS ---
                 
-                # 1. The "Empty Response" Glitch
-                # If cache has data, but API returns EMPTY, it's 99% a bug.
+                
+                
+                
                 if self.initialized and not is_new_day and self.schedule_cache and not current_map:
                     logger.warning("🛡️ STARK PROTOCOL: API returned 0 items. Keeping old cache.")
                     return
 
-                # 2. The "Nuke" Guard (Max Changes)
-                # If too many items change at once, suppress notifications.
+                
+                
                 if self.initialized and not is_new_day:
-                    previous_ids = set(self.schedule_cache.keys())
                     current_ids = set(current_map.keys())
+                    previous_ids = set(self.schedule_cache.keys())
                     
-                    added_count = len(current_ids - previous_ids)
-                    removed_count = len(previous_ids - current_ids)
-                    total_changes = added_count + removed_count
+                    total_changes = len(current_ids - previous_ids) + len(previous_ids - current_ids)
 
                     if total_changes > self.MAX_CHANGES_THRESHOLD:
                         logger.warning(f"🛡️ STARK PROTOCOL: Massive change detected ({total_changes} items). Spam protection active.")
-                        # We update the cache so the NEXT check is accurate, but we send NO Discord alerts.
+                        
                         self.schedule_cache = current_map
                         return
 
-                # --- NOTIFICATIONS ---
-                # Only notify if initialized AND it is NOT a new day rollover.
-                if self.initialized and not is_new_day:
+                
+                
+                
+                if self.initialized and not is_new_day and not is_post_sleep:
                     previous_map = self.schedule_cache
                     current_ids = set(current_map.keys())
                     previous_ids = set(previous_map.keys())
 
-                    # Added
+                    
                     for aid in (current_ids - previous_ids):
                         data = current_map[aid]
                         logger.info(f"Lesson Added: {data['desc']}")
                         await self._send_discord(f"📅 **New Lesson**: {data['desc']}\nTime: {data['start']} ({data['loc']})")
 
-                    # Removed
+                    
                     for rid in (previous_ids - current_ids):
                         old_data = previous_map[rid]
                         logger.info(f"Lesson Removed: {old_data['desc']}")
                         await self._send_discord(f"🗑️ **Lesson Cancelled/Removed**: {old_data['desc']}\nWas at: {old_data['start']}")
 
-                    # Changed
+                    
                     for cid in (current_ids & previous_ids):
                         if current_map[cid]["hash"] != previous_map[cid]["hash"]:
                             data = current_map[cid]
                             logger.info(f"Lesson Changed: {data['desc']}")
                             await self._send_discord(f"✏️ **Lesson Updated**: {data['desc']}\nTime: {data['start']} ({data['loc']})")
 
-                # --- COMMIT STATE ---
+                
                 self.schedule_cache = current_map
                 
-                # Handle Initialization / Rollover
+                
                 if not self.initialized:
                     logger.info(f"Initialized. Tracking {len(current_map)} items.")
                     self.initialized = True
@@ -284,6 +367,9 @@ class MagisterMonitor:
                 logger.error(f"HTTP Error: {e}")
         except Exception as e:
             logger.exception(f"Unexpected error: {e}")
+        finally:
+            
+            self.last_check_time = current_time
 
     async def run(self):
         logger.info("Magister Ninja started.")
